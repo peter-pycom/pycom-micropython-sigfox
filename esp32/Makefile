@@ -27,8 +27,8 @@ BTYPE ?= release
 # MDNS is disabled by default
 MOD_MDNS_ENABLED ?= 0
 
-# set to 1 to enable PyEthernet board (ksz8851 chip)
-PYETH_ENABLED ?= 0
+# PyEthernet is enabled by default (ksz8851 chip)
+PYETH_ENABLED ?= 1
 
 # set to 1 to enable LoRaWAN gateway (requires Pygate board)
 PYGATE_ENABLED ?= 0
@@ -72,7 +72,6 @@ ifeq ($(VARIANT),PYGATE)
         $(error PYGATE variant is not supported on $(BOARD))
     endif
     PYBYTES_ENABLED=1
-    PYETH_ENABLED=1
     MOD_LORA_ENABLED=0 # ETH and LORA are mutually exclusive
     PYGATE_ENABLED=1
 endif
