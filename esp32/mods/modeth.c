@@ -409,7 +409,7 @@ eth_start:
         evt.event_id = SYSTEM_EVENT_ETH_START;
         esp_event_send(&evt);
 
-        MSG("TE ls=%u 10M=%u 100M=%u\n", get_eth_link_speed(), ETH_SPEED_MODE_10M, ETH_SPEED_MODE_100M);
+        MSG("TE ls=%u 10M=%u 100M=%u\n", get_eth_link_speed(), ETH_SPEED_10M, ETH_SPEED_100M);
         for(;;)
         {
             // if(!eth_obj.link_status && (xEventGroupGetBits(eth_event_group) & ETHERNET_EVT_STARTED))

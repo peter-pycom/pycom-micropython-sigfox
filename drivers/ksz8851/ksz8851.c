@@ -32,6 +32,8 @@
 
 #include "ksz8851.h"
 #include "ksz8851conf.h"
+#include "drivers/sx1308/sx1308-config.h"
+
 
 #define SPI_BEGIN     0
 #define SPI_CONTINUE  1
@@ -49,6 +51,9 @@ static IRAM_ATTR void gpio_set_value(pin_obj_t *pin_o, uint32_t value);
 static IRAM_ATTR void ksz8851ProcessInterrupt(void);
 
 static void init_spi(void) {
+    MSG("init_spi (%u)\n", KSZ8851_SCLK_PIN->pin_number);
+    // pin_number=26 : (Lopy4=GPIO13) P10 .. Exp 4.0
+    // pin_number=21 : (Lopy4=GPIO26) P21 .. Pygate
     portDISABLE_INTERRUPTS();
     // this is SpiNum_SPI2
     DPORT_SET_PERI_REG_MASK(DPORT_PERIP_CLK_EN_REG, DPORT_SPI3_CLK_EN);
@@ -82,10 +87,12 @@ static void init_spi(void) {
     pin_config(KSZ8851_SCLK_PIN, -1, VSPICLK_OUT_IDX, GPIO_MODE_OUTPUT, MACHPIN_PULL_NONE, 0);
     pin_config(KSZ8851_NSS_PIN, -1, -1, GPIO_MODE_OUTPUT, MACHPIN_PULL_UP, 1);
     pin_config(KSZ8851_RST_PIN, -1, -1, GPIO_MODE_OUTPUT, MACHPIN_PULL_NONE, 0);
-    pin_config((&PIN_MODULE_P20), -1, -1, GPIO_MODE_OUTPUT, MACHPIN_PULL_NONE, 0);
-
-    gpio_set_value( (&PIN_MODULE_P20), 1 );
+#ifdef PYGATE_ENABLED
+    pin_config(PYGATE_RF_POWER_EN_PIN, -1, -1, GPIO_MODE_OUTPUT, MACHPIN_PULL_NONE, 0);
+    gpio_set_value(PYGATE_RF_POWER_EN_PIN, 1);
+#endif
     portENABLE_INTERRUPTS();
+    MSG("init_spi done\n");
 }
 
 /* spi_byte() sends one byte (outdat) and returns the received byte */
