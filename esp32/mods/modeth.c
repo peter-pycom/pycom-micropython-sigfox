@@ -568,23 +568,24 @@ STATIC mp_obj_t modeth_init(mp_uint_t n_args, const mp_obj_t *pos_args, mp_map_t
 STATIC MP_DEFINE_CONST_FUN_OBJ_KW(modeth_init_obj, 1, modeth_init);
 
 STATIC mp_obj_t eth_init_helper(eth_obj_t *self, const mp_arg_val_t *args) {
-    MSG("ME ih\n");
+    MSG("init_helper\n");
     const char *hostname;
 
     if (!ethernetTaskHandle){
-        MSG("ME ih epi\n");
+        MSG("init_helper epi\n");
         eth_pre_init();
     }
 
     if (args[0].u_obj != mp_const_none) {
-        MSG("ME ih 0\n");
+        MSG("init_helper 0\n");
         hostname = mp_obj_str_get_str(args[0].u_obj);
         eth_validate_hostname(hostname);
         tcpip_adapter_set_hostname(TCPIP_ADAPTER_IF_ETH, hostname);
     }
 
+    MSG("init_helper get(started)\n");
     if (!(xEventGroupGetBits(eth_event_group) & ETHERNET_EVT_STARTED)) {
-        MSG("ME ih !started (%u)\n", esp32_get_chip_rev());
+        MSG("init_helper !started (%u)\n", esp32_get_chip_rev());
         //alloc memory for rx buff
         if (esp32_get_chip_rev() > 0) {
             modeth_rxBuff = heap_caps_malloc(ETHERNET_RX_PACKET_BUFF_SIZE, MALLOC_CAP_SPIRAM);
@@ -599,15 +600,15 @@ STATIC mp_obj_t eth_init_helper(eth_obj_t *self, const mp_arg_val_t *args) {
             nlr_raise(mp_obj_new_exception_msg(&mp_type_OSError, "Cant allocate memory for eth rx Buffer!"));
         }
 
-        MSG("ME ih set(started)\n");
+        MSG("init_helper set(started)\n");
         xEventGroupSetBits(eth_event_group, ETHERNET_EVT_STARTED);
 
         //Notify task to start right away
-        MSG("ME ih tnGive\n");
+        MSG("init_helper tnGive\n");
         xTaskNotifyGive(ethernetTaskHandle);
     }
 
-    MSG("ME ih done\n");
+    MSG("init_helper done\n");
     return mp_const_none;
 }
 

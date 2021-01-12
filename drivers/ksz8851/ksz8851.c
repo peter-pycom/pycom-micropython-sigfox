@@ -267,6 +267,11 @@ void ksz8851SpiInit(void) {
 /* ksz8851Init() initializes the ksz8851.
  */
 void ksz8851Init(void) {
+#ifdef PYGATE_ENABLED
+    MSG("%s: %s\n", __func__, "Pygate");
+#else
+    MSG("%s: %s\n", __func__, "Expansion board 4.0");
+#endif
     uint16_t dev_id;
 
     /* Make sure we get a valid chip ID before going on */
@@ -284,6 +289,7 @@ void ksz8851Init(void) {
             printf("Expected Device ID 0x%x, got 0x%x\n", CHIP_ID_8851_16, dev_id);
         }
     } while ((dev_id & CHIP_ID_MASK) != CHIP_ID_8851_16);
+    MSG("%s: chip id 0x%x 0x%x\n", __func__, dev_id, dev_id & CHIP_ID_MASK);
 
     portDISABLE_INTERRUPTS();
     uint16_t mem_self_test = ksz8851_regrd(REG_MEM_BIST_INFO);
@@ -293,7 +299,7 @@ void ksz8851Init(void) {
         mem_self_test = ksz8851_regrd(REG_MEM_BIST_INFO);
     }
     portENABLE_INTERRUPTS();
-    MSG("Init: 0x%x\n", mem_self_test);
+    MSG("%s: self_test 0x%x\n", __func__, mem_self_test);
 
 #define DISABLE_100MBIT
 #ifdef DISABLE_100MBIT
