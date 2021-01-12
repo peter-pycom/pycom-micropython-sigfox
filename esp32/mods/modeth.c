@@ -72,7 +72,7 @@ static mp_obj_t eth_init_helper(eth_obj_t *self, const mp_arg_val_t *args);
 static IRAM_ATTR void ksz8851_evt_callback(uint32_t ksz8851_evt);
 static void process_tx(uint8_t* buff, uint16_t len);
 static uint32_t process_rx(void);
-static void eth_validate_hostname (const char *hostname);
+// static void eth_validate_hostname (const char *hostname);
 static esp_err_t modeth_event_handler(void *ctx, system_event_t *event);
 
 /*****************************************************************************
@@ -517,7 +517,7 @@ eth_start:
         }
     }
 }
-
+/*
 STATIC void eth_validate_hostname (const char *hostname) {
     //dont set hostname it if is null, so its a valid hostname
     if (hostname == NULL) {
@@ -529,14 +529,14 @@ STATIC void eth_validate_hostname (const char *hostname) {
         nlr_raise(mp_obj_new_exception_msg(&mp_type_ValueError, mpexception_value_invalid_arguments));
     }
 }
-
+*/
 /*****************************************************************************
 * MICROPYTHON FUNCTIONS
 *****************************************************************************/
 
 STATIC const mp_arg_t eth_init_args[] = {
     { MP_QSTR_id,                             MP_ARG_INT,  {.u_int = 0} },
-    { MP_QSTR_hostname,         MP_ARG_KW_ONLY  | MP_ARG_OBJ,  {.u_obj = mp_const_none} },
+    // { MP_QSTR_hostname,         MP_ARG_KW_ONLY  | MP_ARG_OBJ,  {.u_obj = mp_const_none} },
 };
 STATIC mp_obj_t eth_make_new(const mp_obj_type_t *type, mp_uint_t n_args, mp_uint_t n_kw, const mp_obj_t *all_args) {
     // parse args
@@ -555,7 +555,8 @@ STATIC mp_obj_t eth_make_new(const mp_obj_type_t *type, mp_uint_t n_args, mp_uin
         nlr_raise(mp_obj_new_exception_msg(&mp_type_OSError, mpexception_os_resource_not_avaliable));
     }
     // start the peripheral
-    eth_init_helper(self, &args[1]);
+    //eth_init_helper(self, &args[1]);
+    eth_init_helper(self, NULL);
     return (mp_obj_t)self;
 }
 
@@ -569,19 +570,19 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_KW(modeth_init_obj, 1, modeth_init);
 
 STATIC mp_obj_t eth_init_helper(eth_obj_t *self, const mp_arg_val_t *args) {
     MSG("init_helper\n");
-    const char *hostname;
+    // const char *hostname;
 
     if (!ethernetTaskHandle){
         MSG("init_helper epi\n");
         eth_pre_init();
     }
 
-    if (args[0].u_obj != mp_const_none) {
-        MSG("init_helper 0\n");
-        hostname = mp_obj_str_get_str(args[0].u_obj);
-        eth_validate_hostname(hostname);
-        tcpip_adapter_set_hostname(TCPIP_ADAPTER_IF_ETH, hostname);
-    }
+    // if (args[0].u_obj != mp_const_none) {
+    //     MSG("init_helper 0\n");
+    //     hostname = mp_obj_str_get_str(args[0].u_obj);
+    //     eth_validate_hostname(hostname);
+    //     esp_netif_set_hostname(TCPIP_ADAPTER_IF_ETH, hostname);
+    // }
 
     MSG("init_helper get(started)\n");
     if (!(xEventGroupGetBits(eth_event_group) & ETHERNET_EVT_STARTED)) {
@@ -671,6 +672,7 @@ STATIC mp_obj_t eth_ifconfig (mp_uint_t n_args, const mp_obj_t *pos_args, mp_map
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_KW(eth_ifconfig_obj, 1, eth_ifconfig);
 
+/*
 STATIC mp_obj_t eth_hostname (mp_uint_t n_args, const mp_obj_t *args) {
     eth_obj_t *self = args[0];
     if (n_args == 1) {
@@ -684,11 +686,12 @@ STATIC mp_obj_t eth_hostname (mp_uint_t n_args, const mp_obj_t *args) {
             return mp_obj_new_bool(false);
         }
         eth_validate_hostname(hostname);
-        tcpip_adapter_set_hostname(TCPIP_ADAPTER_IF_ETH, hostname);
+        esp_netif_set_hostname(TCPIP_ADAPTER_IF_ETH, hostname);
         return mp_const_none;
     }
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(eth_hostname_obj, 1, 2, eth_hostname);
+*/
 
 STATIC mp_obj_t modeth_mac (mp_obj_t self_in) {
     eth_obj_t *self = self_in;
@@ -749,7 +752,7 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_1(modeth_isconnected_obj, modeth_isconnected);
 STATIC const mp_map_elem_t eth_locals_dict_table[] = {
     { MP_OBJ_NEW_QSTR(MP_QSTR_init),                (mp_obj_t)&modeth_init_obj },
     { MP_OBJ_NEW_QSTR(MP_QSTR_ifconfig),            (mp_obj_t)&eth_ifconfig_obj },
-    { MP_OBJ_NEW_QSTR(MP_QSTR_hostname),            (mp_obj_t)&eth_hostname_obj },
+    // { MP_OBJ_NEW_QSTR(MP_QSTR_hostname),            (mp_obj_t)&eth_hostname_obj },
     { MP_OBJ_NEW_QSTR(MP_QSTR_mac),                 (mp_obj_t)&modeth_mac_obj },
     { MP_OBJ_NEW_QSTR(MP_QSTR_deinit),              (mp_obj_t)&modeth_deinit_obj },
     { MP_OBJ_NEW_QSTR(MP_QSTR_isconnected),         (mp_obj_t)&modeth_isconnected_obj },
