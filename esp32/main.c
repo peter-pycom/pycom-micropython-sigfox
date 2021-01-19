@@ -133,6 +133,10 @@ void app_main(void) {
 
     // remove all the logs from the IDF
     esp_log_level_set("*", ESP_LOG_NONE);
+    // to enable logging do the following:
+    //esp_log_level_set("*", ESP_LOG_INFO);
+    esp_log_level_set("esp_netif_lwip", ESP_LOG_DEBUG);
+    esp_log_level_set("tcpip_adapter_compat", ESP_LOG_DEBUG);
 
     // TODO: esp_event_loop_init is a legacy function and should be removed.
     // TODO: Double check why app_sys_event_handler is needed to be registered. If not needed, then simply call esp_event_loop_create_default()

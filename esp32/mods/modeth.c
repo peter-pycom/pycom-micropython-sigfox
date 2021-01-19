@@ -61,8 +61,8 @@
 #define ETHERNET_EVT_STARTED          0x0002
 
 //#define DEBUG_MODETH
-//#define MSG(fmt, ...) printf("[%u] modeth: " fmt, mp_hal_ticks_ms(), ##__VA_ARGS__)
-#define MSG(fmt, ...) (void)0
+#define MSG(fmt, ...) printf("[%u] modeth %s: " fmt, mp_hal_ticks_ms(), __func__, ##__VA_ARGS__)
+// #define MSG(fmt, ...) (void)0
 
 /*****************************************************************************
 * DECLARE PRIVATE FUNCTIONS
@@ -103,6 +103,7 @@ static DRAM_ATTR EventGroupHandle_t eth_event_group;
 *****************************************************************************/
 
 void eth_pre_init (void) {
+    MSG("\n");
     // init tcpip stack
     tcpip_adapter_init();
     // TODO: commented out because this function does not exist in esp-idf 4.1
@@ -258,7 +259,7 @@ static uint32_t process_rx(void)
     //ksz8851_regwr(REG_INT_MASK, INT_MASK);
     portENABLE_INTERRUPTS();
 
-    MSG("process_rx frames=%u (zero=%u) totalLen=%u last: len=%u \n", frameCntTotal, frameCntZeroLen, totalLen, len);
+    // MSG("process_rx frames=%u (zero=%u) totalLen=%u last: len=%u \n", frameCntTotal, frameCntZeroLen, totalLen, len);
 #ifdef DEBUG_MODETH
     if (frameCntTotal){
         // print last frame
@@ -332,7 +333,7 @@ static void processInterrupt(void) {
 
     portENABLE_INTERRUPTS();
 
-#ifdef MODETH
+#ifdef DEBUG_MODETH
     if ( ctx.isr != 0x2008 || rxqcr != 0x630 )
         MSG("processInterrupt isr=0x%04x rxqcr=0x%04x %s%s%s pin:%u/%u\n", ctx.isr, rxqcr,
             (rxqcr & RXQ_STAT_TIME_INT) ? "t": "",
@@ -365,16 +366,18 @@ static void TASK_ETHERNET (void *pvParameters) {
     modeth_cmd_ctx_t queue_entry;
     uint16_t timeout = 0;
     uint16_t max_timeout = 50u; // 5
+    bool link_status = false;
 
     // Block task till notification is recieved
     thread_notification = ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-    MSG("TE tn=%u\n", thread_notification);
+    MSG("tn=%u\n", thread_notification);
 
     if (thread_notification)
     {
         if(ESP_OK != esp_read_mac(ethernet_mac, ESP_MAC_ETH))
         {
             // Set mac to default
+            MSG("default mac\n");
             ethernet_mac[0] = KSZ8851_MAC0;
             ethernet_mac[1] = KSZ8851_MAC1;
             ethernet_mac[2] = KSZ8851_MAC2;
@@ -384,9 +387,11 @@ static void TASK_ETHERNET (void *pvParameters) {
         }
         else
         {
+            MSG("real mac\n");
             // check for MAC address limitation of KSZ8851 (5th Byte should not be 0x06)
             if(ethernet_mac[4] == 0x06)
             {
+                MSG("fix mac\n");
                 // OR this byte with last byte
                 ethernet_mac[4] |= (ethernet_mac[5] | 0x01 /*Just in case if last byte = 0*/ );
             }
@@ -399,30 +404,29 @@ static void TASK_ETHERNET (void *pvParameters) {
         /* link status  */
         ksz8851RegisterEvtCb(ksz8851_evt_callback);
 eth_start:
-        MSG("TE eth_start\n");
+        MSG("eth_start\n");
         xQueueReset(eth_cmdQueue);
         xEventGroupWaitBits(eth_event_group, ETHERNET_EVT_STARTED, false, true, portMAX_DELAY);
-        MSG("TE init driver\n");
+        MSG("init driver\n");
         // Init Driver
         ksz8851Init();
 
         evt.event_id = SYSTEM_EVENT_ETH_START;
         esp_event_send(&evt);
 
-        MSG("TE ls=%u 10M=%u 100M=%u\n", get_eth_link_speed(), ETH_SPEED_10M, ETH_SPEED_100M);
+        MSG("ls=%u 10M=%u 100M=%u\n", get_eth_link_speed(), ETH_SPEED_10M, ETH_SPEED_100M);
         for(;;)
         {
             // if(!eth_obj.link_status && (xEventGroupGetBits(eth_event_group) & ETHERNET_EVT_STARTED))
             // {
             //     // block till link is up again
-            //     MSG("TE link not up\n");
+            //     MSG("link not up\n");
             //     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
             // }
 
-            // MSG("TE x\n");
             if(!(xEventGroupGetBits(eth_event_group) & ETHERNET_EVT_STARTED))
             {
-                MSG("TE not started\n");
+                MSG("not evt_started\n");
                 // deinit called, free memory and block till re-init
                 xQueueReset(eth_cmdQueue);
                 heap_caps_free(modeth_rxBuff);
@@ -433,30 +437,35 @@ eth_start:
                 portDISABLE_INTERRUPTS();
                 ksz8851_regwr(REG_INT_MASK, 0x0000);
                 portENABLE_INTERRUPTS();
-                MSG("TE goto eth_start\n");
+                MSG("goto eth_start\n");
                 goto eth_start;
             }
 
             if (xQueueReceive(eth_cmdQueue, &queue_entry, 200 / portTICK_PERIOD_MS) == pdTRUE)
             {
+                UBaseType_t qw = uxQueueMessagesWaiting(eth_cmdQueue);
+                if (qw)
+                    printf("queue wait:%u\n", qw);
 
 
                 switch(queue_entry.cmd)
                 {
                     case ETH_CMD_TX:
-                        //MSG("TE TX %u\n", queue_entry.len);
+                        MSG("TX %u\n", queue_entry.len);
                         process_tx(queue_entry.buf, queue_entry.len);
                         break;
                     case ETH_CMD_HW_INT:
+                        MSG("INT\n");
                         processInterrupt();
                         break;
                     case ETH_CMD_RX:
-                        //MSG("TE RX {0x%x}\n", queue_entry.isr);
+                        MSG("RX {0x%x}\n", queue_entry.isr);
                         process_rx();
                         break;
                     case ETH_CMD_CHK_LINK:
-                        MSG("TE CHK_LINK {0x%x}\n", queue_entry.isr);
-                        if(ksz8851GetLinkStatus())
+                        link_status = ksz8851GetLinkStatus();
+                        MSG("CHK_LINK {0x%x} %u\n", queue_entry.isr, link_status);
+                        if(link_status)
                         {
                             eth_obj.link_status = true;
                             evt.event_id = SYSTEM_EVENT_ETH_CONNECTED;
@@ -470,7 +479,7 @@ eth_start:
                         }
                         break;
                     case ETH_CMD_OVERRUN:
-                        MSG("TE OVERRUN {0x%x} ========================================\n", queue_entry.isr);
+                        MSG("OVERRUN {0x%x} ========================================\n", queue_entry.isr);
                         xQueueReset(eth_cmdQueue);
                         eth_obj.link_status = false;
                         ksz8851PowerDownMode();
@@ -480,7 +489,7 @@ eth_start:
                         ksz8851Init();
                         break;
                     default:
-                        MSG("TE def cmd:0x%x isr:0x%04x\n", queue_entry.cmd, queue_entry.isr);
+                        MSG("def cmd:0x%x isr:0x%04x\n", queue_entry.cmd, queue_entry.isr);
                         break;
                 }
             }
@@ -491,7 +500,7 @@ eth_start:
                 //TODO: This workaround should be removed once the lockup is resolved
                 while((!pin_get_value(KSZ8851_INT_PIN)) && timeout < max_timeout)
                 {
-                    MSG("TE TO %u\n", timeout);
+                    MSG("TO %u\n", timeout);
                     processInterrupt();
                     vTaskDelay(10 / portTICK_PERIOD_MS);
                     timeout++;
@@ -573,20 +582,19 @@ STATIC mp_obj_t eth_init_helper(eth_obj_t *self, const mp_arg_val_t *args) {
     // const char *hostname;
 
     if (!ethernetTaskHandle){
-        MSG("init_helper epi\n");
         eth_pre_init();
     }
 
     // if (args[0].u_obj != mp_const_none) {
-    //     MSG("init_helper 0\n");
+    //     MSG("0\n");
     //     hostname = mp_obj_str_get_str(args[0].u_obj);
     //     eth_validate_hostname(hostname);
     //     esp_netif_set_hostname(TCPIP_ADAPTER_IF_ETH, hostname);
     // }
 
-    MSG("init_helper get(started)\n");
+    MSG("get evt_started\n");
     if (!(xEventGroupGetBits(eth_event_group) & ETHERNET_EVT_STARTED)) {
-        MSG("init_helper !started (%u)\n", esp32_get_chip_rev());
+        MSG("not evt_started (%u)\n", esp32_get_chip_rev());
         //alloc memory for rx buff
         if (esp32_get_chip_rev() > 0) {
             modeth_rxBuff = heap_caps_malloc(ETHERNET_RX_PACKET_BUFF_SIZE, MALLOC_CAP_SPIRAM);
@@ -601,15 +609,15 @@ STATIC mp_obj_t eth_init_helper(eth_obj_t *self, const mp_arg_val_t *args) {
             nlr_raise(mp_obj_new_exception_msg(&mp_type_OSError, "Cant allocate memory for eth rx Buffer!"));
         }
 
-        MSG("init_helper set(started)\n");
+        MSG("set evt_started\n");
         xEventGroupSetBits(eth_event_group, ETHERNET_EVT_STARTED);
 
         //Notify task to start right away
-        MSG("init_helper tnGive\n");
+        MSG("tnGive\n");
         xTaskNotifyGive(ethernetTaskHandle);
     }
 
-    MSG("init_helper done\n");
+    MSG("done\n");
     return mp_const_none;
 }
 

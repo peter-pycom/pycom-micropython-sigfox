@@ -40,8 +40,8 @@
 #define SPI_END       2
 #define SPI_COMPLETE  3
 
-//#define MSG(fmt, ...) printf("[%u] ksz8851: " fmt, mp_hal_ticks_ms(), ##__VA_ARGS__)
-#define MSG(fmt, ...) (void)0
+#define MSG(fmt, ...) printf("[%u] ksz8851 %s: " fmt, mp_hal_ticks_ms(), __func__, ##__VA_ARGS__)
+// #define MSG(fmt, ...) (void)0
 
 static uint16_t length_sum;
 static uint8_t frameID = 0;
@@ -299,7 +299,7 @@ void ksz8851Init(void) {
         mem_self_test = ksz8851_regrd(REG_MEM_BIST_INFO);
     }
     portENABLE_INTERRUPTS();
-    MSG("%s: self_test 0x%x\n", __func__, mem_self_test);
+    MSG("self_test 0x%x\n", mem_self_test);
 
 #define DISABLE_100MBIT
 #ifdef DISABLE_100MBIT
@@ -309,7 +309,7 @@ void ksz8851Init(void) {
     auto_negotiation &= ~PHY_AUTO_NEG_100BTX;
     ksz8851_regwr(REG_PHY_AUTO_NEGOTIATION, auto_negotiation);
     portENABLE_INTERRUPTS();
-    MSG("Init: AN=0x%x\n", auto_negotiation);
+    MSG("autonegotiation 0x%x\n", auto_negotiation);
 #endif
 
     portDISABLE_INTERRUPTS();
@@ -417,6 +417,7 @@ void ksz8851Init(void) {
     spi_setbits(REG_RX_CTRL1, RX_CTRL_ENABLE);
 
     portENABLE_INTERRUPTS();
+    MSG("done\n");
 }
 
 /* ksz8851BeginPacketSend() starts the packet sending process.  First,
@@ -600,6 +601,7 @@ void ksz8851RetrievePacketData(unsigned char *localBuffer, unsigned int *length,
  */
 void ksz8851RegisterEvtCb(ksz8851_evt_cb_t evt_cb)
 {
+    MSG("evt_cb=%p\n", evt_cb);
     evt_cb_func = evt_cb;
 }
 
