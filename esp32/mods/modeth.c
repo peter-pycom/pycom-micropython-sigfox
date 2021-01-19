@@ -46,7 +46,9 @@
 #include "freertos/timers.h"
 
 #include "esp32chipinfo.h"
-#include "app_sys_evt.h"
+#include "str_utils.h"
+
+// #include "lwip/esp_netif_lwip_internal.h"
 
 /*****************************************************************************
 * DEFINE CONSTANTS
@@ -73,7 +75,8 @@ static IRAM_ATTR void ksz8851_evt_callback(uint32_t ksz8851_evt);
 static void process_tx(uint8_t* buff, uint16_t len);
 static uint32_t process_rx(void);
 // static void eth_validate_hostname (const char *hostname);
-static esp_err_t modeth_event_handler(void *ctx, system_event_t *event);
+STATIC void modeth_event_handler(void* event_handler_arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
+
 
 /*****************************************************************************
 * DECLARE PRIVATE DATA
@@ -86,14 +89,15 @@ eth_obj_t DRAM_ATTR eth_obj = {
         .trigger = 0,
         .events = 0,
         .handler = NULL,
-        .handler_arg = NULL
+        .handler_arg = NULL,
+        .esp_netif = NULL,
 };
 
 static uint8_t* modeth_rxBuff = NULL;
-#if defined(FIPY) || defined(GPY)
-// Variable saving DNS info
-static tcpip_adapter_dns_info_t eth_sta_inf_dns_info;
-#endif
+// #if defined(FIPY) || defined(GPY)
+// // Variable saving DNS info
+// // static esp_netif_dns_info_t eth_inf_dns_info;
+// #endif
 uint8_t ethernet_mac[ETH_MAC_SIZE] = {0};
 xQueueHandle DRAM_ATTR eth_cmdQueue = NULL;
 static DRAM_ATTR EventGroupHandle_t eth_event_group;
@@ -102,15 +106,27 @@ static DRAM_ATTR EventGroupHandle_t eth_event_group;
 * DEFINE PUBLIC FUNCTIONS
 *****************************************************************************/
 
+// struct esp_netif_netstack_lwip_vanilla_config {
+//     err_t (*init_fn)(struct netif*);
+//     void (*input_fn)(void *netif, void *buffer, size_t len, void *eb);
+// };
+
+
 void eth_pre_init (void) {
     MSG("\n");
-    // init tcpip stack
-    tcpip_adapter_init();
-    // TODO: commented out because this function does not exist in esp-idf 4.1
-    // init tcpip eth evt handlers to default
-    // esp_event_set_default_eth_handlers();
-    // register eth app evt handler
-    app_sys_register_evt_cb(APP_SYS_EVT_ETH, modeth_event_handler);
+    esp_netif_config_t cfg = ESP_NETIF_DEFAULT_ETH();
+    const esp_netif_netstack_config_t* s = cfg.stack;
+    //struct esp_netif_netstack_lwip_vanilla_config* l = &(cfg.stack->lwip);
+    printf("%p\n", cfg.stack); // ->init_fn );
+    // printf("%p\n", cfg.stack->lwip );
+    //printf("%p\n", cfg.stack->lwip.input_fn );
+
+
+    eth_obj.esp_netif = esp_netif_new(&cfg);
+
+    ESP_ERROR_CHECK(esp_event_handler_register(ETH_EVENT, ESP_EVENT_ANY_ID, &modeth_event_handler, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &modeth_event_handler, NULL));
+
     //Create cmd Queue
     eth_cmdQueue = xQueueCreate(ETHERNET_CMD_QUEUE_SIZE, sizeof(modeth_cmd_ctx_t));
     //Create event group
@@ -149,50 +165,82 @@ bool is_eth_link_up(void)
 * DEFINE PRIVATE FUNCTIONS
 *****************************************************************************/
 
-static esp_err_t modeth_event_handler(void *ctx, system_event_t *event)
+
+STATIC void modeth_event_handler(void* event_handler_arg, esp_event_base_t event_base, int32_t event_id, void* event_data) 
 {
     tcpip_adapter_ip_info_t ip;
+    if(event_base == ETH_EVENT) {
+        MSG("%s %d\n", event_base, event_id);
+        switch(event_id) {
+            case ETHERNET_EVENT_CONNECTED:
+                MSG("ETHERNET_EVENT_CONNECTED\n");
+                break;
+            case ETHERNET_EVENT_DISCONNECTED:
+                MSG("ETHERNET_EVENT_DISCONNECTED\n");
+                // TODO: does this work?
+                mod_network_deregister_nic(&eth_obj);
+                xEventGroupClearBits(eth_event_group, ETHERNET_EVT_CONNECTED);
+                break;
+            case ETHERNET_EVENT_START: {
+                MSG("ETHERNET_EVENT_START\n");
+    tcpip_adapter_ip_info_t eth_ip;
+    uint8_t eth_mac[6];
 
-    switch (event->event_id) {
-    case SYSTEM_EVENT_ETH_CONNECTED:
-        MSG("EH Ethernet Link Up\n");
-        break;
-    case SYSTEM_EVENT_ETH_DISCONNECTED:
-        MSG("EH Ethernet Link Down\n");
-        mod_network_deregister_nic(&eth_obj);
-        xEventGroupClearBits(eth_event_group, ETHERNET_EVT_CONNECTED);
-        break;
-    case SYSTEM_EVENT_ETH_START:
-        MSG("EH Ethernet Started\n");
-        break;
-    case SYSTEM_EVENT_ETH_GOT_IP:
-        memset(&ip, 0, sizeof(tcpip_adapter_ip_info_t));
-        ESP_ERROR_CHECK(tcpip_adapter_get_ip_info(ESP_IF_ETH, &ip));
-        MSG("EH Got IP Addr: " IPSTR " " IPSTR " " IPSTR "\n", IP2STR(&ip.ip), IP2STR(&ip.netmask), IP2STR(&ip.gw));
-#if defined(FIPY) || defined(GPY)
-        MSG("EH save DNS\n");
-        // Save DNS info for restoring if wifi inf is usable again after LTE disconnect
-        tcpip_adapter_get_dns_info(TCPIP_ADAPTER_IF_ETH, ESP_NETIF_DNS_MAIN, &eth_sta_inf_dns_info);
-#endif
-        mod_network_register_nic(&eth_obj);
-        xEventGroupSetBits(eth_event_group, ETHERNET_EVT_CONNECTED);
-        break;
-    case SYSTEM_EVENT_ETH_STOP:
-        MSG("EH Ethernet Stopped\n");
-        xEventGroupClearBits(eth_event_group, ETHERNET_EVT_STARTED);
-        break;
-    default:
-        break;
+    modeth_get_mac(eth_mac);
+    hexdump(eth_mac, 6);
+
+    tcpip_adapter_get_ip_info(TCPIP_ADAPTER_IF_ETH, &eth_ip);
+
+    MSG("ip: " IPSTR " " IPSTR " " IPSTR "\n", IP2STR(&eth_ip.ip), IP2STR(&eth_ip.netmask), IP2STR(&eth_ip.gw));
+    // printf("ip: " IPSTR "\n", IP2STR(&eth_ip.ip));
+
+printf("esp_obj.esp_netfi:%p\n", eth_obj.esp_netif);
+
+    tcpip_adapter_eth_start(eth_mac, &eth_ip, NULL);
+    //tcpip_adapter_compat_start_netif(eth_obj.esp_netif, eth_mac, eth_ip);
+
+
+                }
+                break;
+            case ETHERNET_EVENT_STOP:
+                MSG("ETHERNET_EVENT_STOP\n");
+                xEventGroupClearBits(eth_event_group, ETHERNET_EVT_STARTED);
+                break;
+            default:
+                MSG("unkown ETH_EVENT: %d\n", event_id);
+                break;
+        }
+    } else if(event_base == IP_EVENT) {
+        MSG("%s %d\n", event_base, event_id);
+        switch(event_id) {
+            case IP_EVENT_ETH_GOT_IP:
+                memset(&ip, 0, sizeof(tcpip_adapter_ip_info_t));
+                ESP_ERROR_CHECK(tcpip_adapter_get_ip_info(ESP_IF_ETH, &ip));
+                MSG("IP_EVENT_ETH_GOT_IP: " IPSTR " " IPSTR " " IPSTR "\n", IP2STR(&ip.ip), IP2STR(&ip.netmask), IP2STR(&ip.gw));
+// #if defined(FIPY) || defined(GPY)
+//                 MSG("EH save DNS\n");
+//                 // Save DNS info for restoring if wifi inf is usable again after LTE disconnect
+//                 tcpip_adapter_get_dns_info(TCPIP_ADAPTER_IF_ETH, ESP_NETIF_DNS_MAIN, &eth_inf_dns_info);
+// #endif
+                mod_network_register_nic(&eth_obj);
+                xEventGroupSetBits(eth_event_group, ETHERNET_EVT_CONNECTED);
+                break;
+            default:
+                MSG("unhandled IP_EVENT: %d\n", event_id);
+               break;
+        }
+    } else {
+        MSG("unknown event_base %p (%p,%p)\n", event_base, IP_EVENT, ETH_EVENT);
     }
-    return ESP_OK;
 }
 
 static void eth_set_default_inf(void)
 {
-#if defined(FIPY) || defined(GPY)
-    tcpip_adapter_set_dns_info(TCPIP_ADAPTER_IF_ETH, ESP_NETIF_DNS_MAIN, &eth_sta_inf_dns_info);
-    tcpip_adapter_up(TCPIP_ADAPTER_IF_ETH);
-#endif
+    MSG("");
+// #if defined(FIPY) || defined(GPY)
+//     esp_netif_set_dns_info(TCPIP_ADAPTER_IF_ETH, ESP_NETIF_DNS_MAIN, &eth_inf_dns_info);
+//     esp_netif_up(TCPIP_ADAPTER_IF_ETH);
+// #endif
 }
 
 /* print an ethernet frame in a similar style as wireshark */
@@ -232,23 +280,38 @@ static void process_tx(uint8_t* buff, uint16_t len)
 
 static uint32_t process_rx(void)
 {
+    // MSG("process_rx\n");
+
     uint32_t len, frameCnt;
     uint32_t totalLen = 0;
 
     // disable int before reading buffer
     portDISABLE_INTERRUPTS();
     //ksz8851_regwr(REG_INT_MASK, 0);
-
     frameCnt = (ksz8851_regrd(REG_RX_FRAME_CNT_THRES) & RX_FRAME_CNT_MASK) >> 8;
+    portENABLE_INTERRUPTS();
+    MSG("frameCnt %u\n", frameCnt);
+
     uint32_t frameCntTotal = frameCnt;
     uint32_t frameCntZeroLen = 0;
     while (frameCnt > 0)
     {
+        // printf("x %p\n", modeth_rxBuff);
+        portDISABLE_INTERRUPTS();
         ksz8851RetrievePacketData(modeth_rxBuff, &len, frameCnt, frameCntTotal);
+        portENABLE_INTERRUPTS();
+        // printf("y %p %u\n", modeth_rxBuff, len);
         if(len)
         {
             totalLen += len;
+
+            // printf("a %p\n", modeth_rxBuff);
             tcpip_adapter_eth_input(modeth_rxBuff, len, NULL);
+
+            // printf("aa %p\n", modeth_rxBuff);
+            // esp_netif_receive(eth_obj.esp_netif, modeth_rxBuff, len, NULL);
+
+            // printf("b\n");
         } else {
             frameCntZeroLen++;
         }
@@ -257,7 +320,7 @@ static uint32_t process_rx(void)
 
     // re-enable int
     //ksz8851_regwr(REG_INT_MASK, INT_MASK);
-    portENABLE_INTERRUPTS();
+    // portENABLE_INTERRUPTS();
 
     // MSG("process_rx frames=%u (zero=%u) totalLen=%u last: len=%u \n", frameCntTotal, frameCntZeroLen, totalLen, len);
 #ifdef DEBUG_MODETH
@@ -441,6 +504,25 @@ eth_start:
                 goto eth_start;
             }
 
+            // if ( ( uxQueueMessagesWaiting(eth_cmdQueue) == 0 ) && ( interrupt_pin_value == 0 || interrupt_stati != INT_RX_WOL_LINKUP ) ) {
+            //     // there is no command,
+            //     // however either the interrupt line is low, or there is an atypical status
+            //     printStat = true;
+            // }
+            // if (ct % 100 == 0){
+            //     printStat = true;
+            // }
+            // if (printStat){
+            //     printf("TE ct=%u stack:%u queue:%u tx:%u/%u rx:%u/%u:%f link:%u:%u int:0x%x isr:0x%x (%u/%u) rstovf=%u rstint=%u\n",
+            //     // port:0x%x speed:%u\n",
+            //         ct, stack_high, uxQueueMessagesWaiting( eth_cmdQueue ),
+            //         ctTX, totalTX, ctRX, totalRX, ((double)totalRX/ctRX),
+            //         ksz8851GetLinkStatus(), get_eth_link_speed(), interrupt_pin_value, interrupt_stati, num_strange_isr, num_strange_isr_zero,
+            //         num_resets_overflow, num_resets_int_pin);
+            //         // ksz8851_regrd(REG_PORT_STATUS));
+            //     printStat = false;
+            // }
+
             if (xQueueReceive(eth_cmdQueue, &queue_entry, 200 / portTICK_PERIOD_MS) == pdTRUE)
             {
                 UBaseType_t qw = uxQueueMessagesWaiting(eth_cmdQueue);
@@ -596,6 +678,7 @@ STATIC mp_obj_t eth_init_helper(eth_obj_t *self, const mp_arg_val_t *args) {
     if (!(xEventGroupGetBits(eth_event_group) & ETHERNET_EVT_STARTED)) {
         MSG("not evt_started (%u)\n", esp32_get_chip_rev());
         //alloc memory for rx buff
+        // TOOD: could it be that SPIRAM causes the slow eth corruption?
         if (esp32_get_chip_rev() > 0) {
             modeth_rxBuff = heap_caps_malloc(ETHERNET_RX_PACKET_BUFF_SIZE, MALLOC_CAP_SPIRAM);
         }
@@ -630,13 +713,13 @@ STATIC mp_obj_t eth_ifconfig (mp_uint_t n_args, const mp_obj_t *pos_args, mp_map
     mp_arg_val_t args[MP_ARRAY_SIZE(wlan_ifconfig_args)];
     mp_arg_parse_all(n_args - 1, pos_args + 1, kw_args, MP_ARRAY_SIZE(args), wlan_ifconfig_args, args);
 
-    tcpip_adapter_dns_info_t dns_info;
+    esp_netif_dns_info_t dns_info;
     // get the configuration
     if (args[0].u_obj == MP_OBJ_NULL) {
         // get
-        tcpip_adapter_ip_info_t ip_info;
-        tcpip_adapter_get_dns_info(TCPIP_ADAPTER_IF_ETH, ESP_NETIF_DNS_MAIN, &dns_info);
-        if (ESP_OK == tcpip_adapter_get_ip_info(TCPIP_ADAPTER_IF_ETH, &ip_info)) {
+        esp_netif_ip_info_t ip_info;
+        esp_netif_get_dns_info(eth_obj.esp_netif, ESP_NETIF_DNS_MAIN, &dns_info);
+        if (ESP_OK == esp_netif_get_ip_info(eth_obj.esp_netif, &ip_info)) {
             mp_obj_t ifconfig[4] = {
                 netutils_format_ipv4_addr((uint8_t *)&ip_info.ip.addr, NETUTILS_BIG),
                 netutils_format_ipv4_addr((uint8_t *)&ip_info.netmask.addr, NETUTILS_BIG),
@@ -653,15 +736,15 @@ STATIC mp_obj_t eth_ifconfig (mp_uint_t n_args, const mp_obj_t *pos_args, mp_map
             mp_obj_t *items;
             mp_obj_get_array_fixed_n(args[0].u_obj, 4, &items);
 
-            tcpip_adapter_ip_info_t ip_info;
+            esp_netif_ip_info_t ip_info;
             netutils_parse_ipv4_addr(items[0], (uint8_t *)&ip_info.ip.addr, NETUTILS_BIG);
             netutils_parse_ipv4_addr(items[1], (uint8_t *)&ip_info.netmask.addr, NETUTILS_BIG);
             netutils_parse_ipv4_addr(items[2], (uint8_t *)&ip_info.gw.addr, NETUTILS_BIG);
             netutils_parse_ipv4_addr(items[3], (uint8_t *)&dns_info.ip, NETUTILS_BIG);
 
-            tcpip_adapter_dhcpc_stop(TCPIP_ADAPTER_IF_ETH);
-            tcpip_adapter_set_ip_info(TCPIP_ADAPTER_IF_ETH, &ip_info);
-            tcpip_adapter_set_dns_info(TCPIP_ADAPTER_IF_ETH, ESP_NETIF_DNS_MAIN, &dns_info);
+            esp_netif_dhcpc_stop(eth_obj.esp_netif);
+            esp_netif_set_ip_info(eth_obj.esp_netif, &ip_info);
+            esp_netif_set_dns_info(eth_obj.esp_netif, ESP_NETIF_DNS_MAIN, &dns_info);
 
         } else {
             // check for the correct string
@@ -670,7 +753,7 @@ STATIC mp_obj_t eth_ifconfig (mp_uint_t n_args, const mp_obj_t *pos_args, mp_map
                 nlr_raise(mp_obj_new_exception_msg(&mp_type_ValueError, mpexception_value_invalid_arguments));
             }
 
-            if (ESP_OK != tcpip_adapter_dhcpc_start(TCPIP_ADAPTER_IF_ETH)) {
+            if (ESP_OK != esp_netif_dhcpc_start(eth_obj.esp_netif)) {
                 nlr_raise(mp_obj_new_exception_msg(&mp_type_OSError, mpexception_os_operation_failed));
             }
         }

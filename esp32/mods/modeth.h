@@ -32,6 +32,7 @@ typedef struct _eth_obj_t {
     int32_t                 events;
     mp_obj_t                handler;
     mp_obj_t                handler_arg;
+    esp_netif_t*            esp_netif;
 } eth_obj_t;
 
 typedef enum

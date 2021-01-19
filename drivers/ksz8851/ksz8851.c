@@ -60,7 +60,7 @@ static void init_spi(void) {
     DPORT_CLEAR_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG, DPORT_SPI3_RST);
 
     // configure the SPI port
-    spi_attr_t spi_attr = {.mode = SpiMode_Master, .subMode = SpiSubMode_0, .speed = SpiSpeed_8MHz,
+    spi_attr_t spi_attr = {.mode = SpiMode_Master, .subMode = SpiSubMode_0, .speed = SpiSpeed_2MHz, // SpiSpeed_8MHz,
                            .bitOrder = SpiBitOrder_MSBFirst, .halfMode = SpiWorkMode_Full};
 
     spi_init(KSZ8851_SPI_NUM, &spi_attr);
