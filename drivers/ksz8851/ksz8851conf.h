@@ -13,12 +13,21 @@
 #define KSZ8851_INT_PIN                                          (&PIN_MODULE_P18)
 #else
 // Expansion board 4.0
-#define KSZ8851_SCLK_PIN                                         (&PIN_MODULE_P10)
+#define KSZ8851_SCLK_PIN                                         (&PIN_MODULE_P22) 
+// 10)
+// P22 = GPIO 9
 #define KSZ8851_MOSI_PIN                                         (&PIN_MODULE_P11)
-#define KSZ8851_MISO_PIN                                         (&PIN_MODULE_P16)
+// P11 = GPIO 22
+#define KSZ8851_MISO_PIN                                         (&PIN_MODULE_P14)
+// 16
+// P14 = GPIO 4
 #define KSZ8851_NSS_PIN                                          (&PIN_MODULE_P3)
-#define KSZ8851_RST_PIN                                          (&PIN_MODULE_P9)
+// P3 = GPIO 24
+#define KSZ8851_RST_PIN                                          (&PIN_MODULE_P8)
+// 9)
+// P8 = GPIO 15
 #define KSZ8851_INT_PIN                                          (&PIN_MODULE_P13)
+// P13 = GPIO 5
 #endif
 
 
