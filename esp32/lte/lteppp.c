@@ -940,6 +940,9 @@ static void lteppp_print_states(){
             case E_LTE_MODEM_DISCONNECTED:
                 printf("=DISC ");
                 break;
+            case E_LTE_MODEM_RECOVERY:
+                printf("=RECO ");
+                break;
         }
 
         printf("s=%u", s); // lteppp_lte_state
