@@ -91,6 +91,7 @@
 #include "rom/ets_sys.h"
 #include "soc/rtc_cntl_reg.h"
 #include "soc/sens_reg.h"
+#include "esp_spiram.h"
 
 #ifdef PYGATE_ENABLED
 #include "cmd_manager.h"
@@ -222,6 +223,12 @@ STATIC mp_obj_t machine_info(void) {
     mp_printf(&mp_plat_print, "TimerTask stack water mark: %d\n", (unsigned int)uxTaskGetStackHighWaterMark(xTimerGetTimerDaemonTaskHandle()));
     mp_printf(&mp_plat_print, "IdleTask stack water mark: %d\n", (unsigned int)uxTaskGetStackHighWaterMark(xTaskGetIdleTaskHandle()));
     mp_printf(&mp_plat_print, "System free heap: %d\n", (unsigned int)esp_get_free_heap_size());
+    if (esp_spiram_is_initialized()){
+        size_t spi=esp_spiram_get_size();
+        printf("SPI ram: %u/0x%x B, %u KiB, %u MiB\n", spi, spi, (size_t)spi/1024, (size_t)spi/1024/1024 );
+    } else {
+        printf("SPI ram: None\n");
+    }
     mp_printf(&mp_plat_print, "---------------------------------------------\n");
 
     return mp_const_none;
