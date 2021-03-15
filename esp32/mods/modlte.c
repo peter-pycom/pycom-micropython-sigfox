@@ -1042,8 +1042,13 @@ mp_obj_t lte_detach(mp_uint_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_arg
                 }
             }
         } else {
-            if (!lte_push_at_command("AT+CFUN=4", LTE_RX_TIMEOUT_MAX_MS)) {
-                goto error;
+            if (!lte_push_at_command("AT+CFUN=4", 2 * LTE_RX_TIMEOUT_MAX_MS)) {
+                printf("WARNING AT+CFUN=4 time dout. Retrying\n");
+                if (!lte_push_at_command("AT+CFUN=4", 2 * LTE_RX_TIMEOUT_MAX_MS)) {
+                    printf("WARNING AT+CFUN=4 timed out again. Retrying\n");
+                    if (!lte_push_at_command("AT+CFUN=4", 2 * LTE_RX_TIMEOUT_MAX_MS))
+                        goto error;
+                }
             }
         }
     } else {
