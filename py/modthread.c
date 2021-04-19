@@ -63,9 +63,18 @@ STATIC mp_obj_t thread_lock_acquire(size_t n_args, const mp_obj_t *args) {
         wait = mp_obj_get_int(args[1]);
         // TODO support timeout arg
     }
+
+    if (!heap_caps_check_integrity_all(true)) {
+        printf("At least one heap is corrupt A\n");
+    }
+    // mp_thread_mutex_lock(X);
     MP_THREAD_GIL_EXIT();
     int ret = mp_thread_mutex_lock(self->mutex, wait);
     MP_THREAD_GIL_ENTER();
+    // mp_thread_mutex_unlock(X);
+    if (!heap_caps_check_integrity_all(true)) {
+        printf("At least one heap is corrupt B\n");
+    }
     if (ret == 0) {
         return mp_const_false;
     } else if (ret == 1) {
@@ -83,9 +92,15 @@ STATIC mp_obj_t thread_lock_release(mp_obj_t self_in) {
         mp_raise_msg(&mp_type_RuntimeError, NULL);
     }
     self->locked = false;
+    if (!heap_caps_check_integrity_all(true)) {
+        printf("At least one heap is corrupt C\n");
+    }
     MP_THREAD_GIL_EXIT();
     mp_thread_mutex_unlock(self->mutex);
     MP_THREAD_GIL_ENTER();
+    if (!heap_caps_check_integrity_all(true)) {
+        printf("At least one heap is corrupt D\n");
+    }
     return mp_const_none;
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(thread_lock_release_obj, thread_lock_release);
